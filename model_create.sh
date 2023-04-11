@@ -38,13 +38,14 @@ sed -i "s/^set z_hi = $z_hi/set z_hi = ${7}/" $path_to_marcs
 sed -i "s/^set vt = $vt/set vt = ${8}/" $path_to_marcs
 sed -i "s/^set a_low = $a_low/set a_low = ${9}/" $path_to_marcs
 sed -i "s/^set a_hi = $a_hi/set a_hi = ${10}/" $path_to_marcs
-sed -i "s/^set mass = $vt/set mass = ${11}/" $path_to_marcs
-sed -i "s/^set geom = $vt/set geom = ${12}/" $path_to_marcs
-sed -i "s/^set comp = $vt/set comp = ${13}/" $path_to_marcs
+sed -i "s/^set mass = $mass/set mass = ${11}/" $path_to_marcs
+sed -i "s/^set geom = $geom/set geom = ${12}/" $path_to_marcs
+sed -i "s/^set comp = $comp/set comp = ${13}/" $path_to_marcs
 sed -i "s/^foreach Tref ( $Tref )/foreach Tref ( ${14} )/" $path_to_marcs
 sed -i "s/^foreach loggref ( $loggref )/foreach loggref ( ${15} )/" $path_to_marcs
 sed -i "s/^foreach zref ( $zref )/foreach zref ( ${16} )/" $path_to_marcs
+sed -i "s/^foreach name ( $name )/foreach name ( \'${17}\' )/" $path_to_marcs
 
 # Run the MARCS script
-chmod a+x /blue/rezzeddine/share/fmendez/pipeline/$SCRIPT
-/blue/rezzeddine/share/fmendez/pipeline/$SCRIPT > /dev/null 2>&1
+chmod a+x /blue/rezzeddine/share/fmendez/pipeline/${SCRIPT}
+/blue/rezzeddine/share/fmendez/pipeline/${SCRIPT} #> /dev/null 2>&1

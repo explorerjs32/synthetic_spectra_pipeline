@@ -1,0 +1,97 @@
+#!/bin/csh -f
+##################################################################################################
+# Output turbospectrum/babsma format compatible
+# A control plot (interpol_check.ps) is displayed at the end.
+# Extrapolation is not advised, even if allowed by this program.
+# Requires an "cubic" set of 8 MARCS binary format models,
+# in other words
+# !!!!!   MODELS MUST DIFFER 2 BY 2 BY ONLY ONE PARAMETER !!!!!!
+# !!!!!!! ORDER OF THE INPUT MODELS MATTERS !!!!!!!
+# here is the order of the files
+# model1: Tefflow logglow zlow
+# model2: Tefflow logglow zup
+# model3: Tefflow loggup zlow
+# model4: Tefflow loggup zup
+# model5: Teffup logglow zlow
+# model6: Teffup logglow zup
+# model7: Teffup loggup zlow
+# model8: Teffup loggup zup
+######################################################################################################
+set T_low = 5000
+set T_hi = 6000
+set g_low = +4.0
+set g_hi = +5.0
+set z_low = -1.00
+set z_hi = +0.00
+set vt = 01
+
+set a_low = +0.40
+set a_hi = +0.00
+
+set mass = 0.0
+
+set geom = p
+set comp = st
+if ($geom == p) set path_geom = pp
+if ($geom == s) set path_geom = sph
+if ($comp == ap) set path_comp = alpha_poor
+if ($comp == st) set path_comp = stand_comp
+
+set model_path = ../MARCS/marcs/
+set path_Tinf = ${path_comp}/${path_geom}/${T_low}K
+set path_Tsup = ${path_comp}/${path_geom}/${T_hi}K
+
+#set model_path = Testwebformat
+#set model_path = /u16/marcs
+
+#MARCS binary format (.true.) or MARCS ASCII web format (.false.)?
+set marcs_binary = '.false.'
+#set marcs_binary = '.true.'
+
+
+set model1 = ${geom}${T_low}"_"g${g_low}"_"m${mass}"_"t${vt}"_"${comp}"_"z${z_low}"_"a${a_low}"_"c+0.00"_"n+0.00"_"o${a_low}"_"r+0.00"_"s+0.00.mod
+set model2 = ${geom}${T_low}"_"g${g_low}"_"m${mass}"_"t${vt}"_"${comp}"_"z${z_hi}"_"a${a_hi}"_"c+0.00"_"n+0.00"_"o${a_hi}"_"r+0.00"_"s+0.00.mod
+set model3 = ${geom}${T_low}"_"g${g_hi}"_"m${mass}"_"t${vt}"_"${comp}"_"z${z_low}"_"a${a_low}"_"c+0.00"_"n+0.00"_"o${a_low}"_"r+0.00"_"s+0.00.mod
+set model4 = ${geom}${T_low}"_"g${g_hi}"_"m${mass}"_"t${vt}"_"${comp}"_"z${z_hi}"_"a${a_hi}"_"c+0.00"_"n+0.00"_"o${a_hi}"_"r+0.00"_"s+0.00.mod
+set model5 = ${geom}${T_hi}"_"g${g_low}"_"m${mass}"_"t${vt}"_"${comp}"_"z${z_low}"_"a${a_low}"_"c+0.00"_"n+0.00"_"o${a_low}"_"r+0.00"_"s+0.00.mod
+set model6 = ${geom}${T_hi}"_"g${g_low}"_"m${mass}"_"t${vt}"_"${comp}"_"z${z_hi}"_"a${a_hi}"_"c+0.00"_"n+0.00"_"o${a_hi}"_"r+0.00"_"s+0.00.mod
+set model7 = ${geom}${T_hi}"_"g${g_hi}"_"m${mass}"_"t${vt}"_"${comp}"_"z${z_low}"_"a${a_low}"_"c+0.00"_"n+0.00"_"o${a_low}"_"r+0.00"_"s+0.00.mod
+set model8 = ${geom}${T_hi}"_"g${g_hi}"_"m${mass}"_"t${vt}"_"${comp}"_"z${z_hi}"_"a${a_hi}"_"c+0.00"_"n+0.00"_"o${a_hi}"_"r+0.00"_"s+0.00.mod
+
+#enter here the values requested for the interpolated model
+foreach Tref ( 6000 )
+foreach loggref ( +5.0 )
+foreach zref ( +0.00 )
+foreach vtref ( 01 )
+foreach name ( "model" )
+set format = TURBO
+
+set modele_out = ./result_model/${name}_${Tref}g${loggref}z${zref}vt${vtref}.${format}
+#set modele_out2 = Testout/${Tref}g${loggref}z${zref}.alt
+#set modele_out = scratch
+
+#### the test option is set to .true. if you want to plot comparison model (model_test)
+set test = '.false.'
+set model_test = 'p5750:g+4.5:m0.0:t01:ap:z-0.25:a+0.00:c+0.00:n+0.00:o+0.00:r+0.00:s+0.00.mod'
+
+# interpolation program (for further details see interpol_modeles.f)
+./interpol_modeles_1 <<EOF
+'${model_path}${path_Tinf}/${model1}'
+'${model_path}${path_Tinf}/${model2}'
+'${model_path}${path_Tinf}/${model3}'
+'${model_path}${path_Tinf}/${model4}'
+'${model_path}${path_Tsup}/${model5}'
+'${model_path}${path_Tsup}/${model6}'
+'${model_path}${path_Tsup}/${model7}'
+'${model_path}${path_Tsup}/${model8}'
+'${modele_out}'
+
+
+${Tref}
+${loggref}
+${zref}
+${comp}
+${test}
+${marcs_binary}
+'${model_test}'
+EOF

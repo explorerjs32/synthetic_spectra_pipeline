@@ -74,8 +74,12 @@ def faltbon_format(files, vels):
 
     return df
 
-# Set up the path and list of all the atmospheric models
+# Define the directories
+save_dir = './temp_dir/'
 model_dir = './test_models/'
+ts_spectra_dir = '../Turbospectrum2019/COM-v19.1/syntspec/'
+
+# Set up the path and list of all the atmospheric models
 model_list = sorted(os.listdir(model_dir))
 
 # Enter the parameters you wnat to use in TurboSpectrum
@@ -94,10 +98,10 @@ Na_abun = abundance_range(Na)
 Mg_abun = abundance_range(Mg)
 
 # Defone the rotational velocity range
-rot_vel = np.linspace(5, 50, 10)*-1.
+rot_vel = np.linspace(1, 10, 10)*-1.
 
 # Create the range of microturbulent volocities
-vts = np.linspace(vt, vt + 1., int(1./.2)+1)
+vts = np.linspace(vt, vt + 1., 11)
 
 # Iterate over every model and extract the parameters required for TurboSpectrum along with all the
 # possible combinationsof parameters and abundances
@@ -131,12 +135,43 @@ df = df.append(df2, ignore_index=True)
 # Re format the spec parameters
 spec_df = ts_reformat(df)
 
+# Group the data frame by min wavelength
+grouped_spec_df = spec_df.groupby(spec_df.Min_wave)
+spec_df_5000 = grouped_spec_df.get_group("5000")
+spec_df_5500 = grouped_spec_df.get_group(5500)
+'''
+# Check if the spectra was already created
+ts_spec_list = os.listdir(ts_spectra_dir)
+
+for index, row in spec_df_5000.iterrows():
+    # Extract the spectra name
+    sname = row['Name_out']
+
+    if sname in ts_spec_list:
+        print(f'{sname} found in {index}')
+        spec_df_5000 = spec_df_5000.drop(labels=index, axis=0)
+
+for index, row in spec_df_5500.iterrows():
+    # Extract the spectra name
+    sname = row['Name_out']
+
+    if sname in ts_spec_list:
+        print(f'{sname} found in {index}')
+        spec_df_5500 = spec_df_5500.drop(labels=index, axis=0)
+
+spec_df_5000 = spec_df_5000.reset_index(drop=True)
+spec_df_5500 = spec_df_5500.reset_index(drop=True)
+'''
 # Create the variations for the rotational velocity
-faltbon_df = faltbon_format(spec_df['Name_out'], rot_vel)
+faltbon_df_5000 = faltbon_format(spec_df_5000['Name_out'], rot_vel)
+faltbon_df_5500 = faltbon_format(spec_df_5500['Name_out'], rot_vel)
 
 # Save the parameters to a text file
-save_dir = './temp_dir/'
 if not os.path.isdir(save_dir): os.mkdir(save_dir)
 
-np.savetxt(save_dir+'ts_parameters.txt', spec_df.values, fmt='%s')
-np.savetxt(save_dir+'faltbon_parameters.txt', faltbon_df.values, fmt='%s')
+# np.savetxt(save_dir+'ts_parameters1.txt', spec_df_5000.values, fmt='%s')
+# np.savetxt(save_dir+'ts_parameters2.txt', spec_df_5500.values, fmt='%s')
+# np.savetxt(save_dir+'faltbon_parameters1.txt', faltbon_df_5000.values, fmt='%s')
+# np.savetxt(save_dir+'faltbon_parameters2.txt', faltbon_df_5500.values, fmt='%s')
+np.savetxt(save_dir+'inst_broad_5000.txt', faltbon_df_5000['Faltbon_name_out'].values, fmt='%s')
+np.savetxt(save_dir+'inst_broad_5500.txt', faltbon_df_5500['Faltbon_name_out'].values, fmt='%s')

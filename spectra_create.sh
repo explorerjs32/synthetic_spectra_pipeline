@@ -30,5 +30,5 @@ sed -i "s/^11 $Na/11 ${9}/" $path_to_ts
 sed -i "s/^12 $Mg/12 ${10}/" $path_to_ts
 
 # Run the TurboSpectrum script
-chmod a+x $path_to_ts
-/blue/rezzeddine/share/fmendez/pipeline/$SCRIPT > /dev/null 2>&1
+chmod a+x /blue/rezzeddine/share/fmendez/pipeline/${SCRIPT}
+/blue/rezzeddine/share/fmendez/pipeline/${SCRIPT} #> /dev/null 2>&1

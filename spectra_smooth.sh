@@ -20,4 +20,4 @@ sed -i "s/^  FWHM = $FWHM/  FWHM = ${4}/" $path_to_fb
 # Compile the fortran script and run it
 SCRIPTOUT=${5}
 gfortran $path_to_fb -o $SCRIPTOUT
-/blue/rezzeddine/share/fmendez/pipeline/$SCRIPTOUT > /dev/null 2>&1
+/blue/rezzeddine/share/fmendez/pipeline/$SCRIPTOUT #> /dev/null 2>&1
