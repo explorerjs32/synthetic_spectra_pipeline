@@ -9,6 +9,8 @@ from specutils.manipulation import LinearInterpolatedResampler
 from astropy import units as u
 import os
 import sys
+import argparse
+
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -37,7 +39,7 @@ def marcs_reformat(df):
 
     return df
 
-def generate_marcs_model(star, parameters, marcs_bash, marcs_script):
+def generate_marcs_model(star, parameters):
 
     # Define the grid of pararameters for the MARCS models
     Ts = np.linspace(4500, 6500, 9)
@@ -106,7 +108,7 @@ def generate_synthetic_spectra(model_params, stellar_params, abund, model, eleme
 
     return synth_spec_out
 
-def spec_broadening(stellar_params, spec_out, temp_dir, broadening_bash, inst_broad_script, inst_broad_script_out, rot_vel_broad_script, rot_vel_broad_script_out):
+def spec_broadening(stellar_params, spec_out, temp_dir, broadening_bash, inst_broad_script, rot_vel_broad_script):
 
     # Define the broadening values
     inst_broadening = -1.2
@@ -118,17 +120,17 @@ def spec_broadening(stellar_params, spec_out, temp_dir, broadening_bash, inst_br
     spec_out_rv = split_name+'_rv'+str(rv_broadening)+'.spec'
 
     # Apply instrumental broadening
-    inst_spec_args = ['./%s %s %s %s %s %s > /dev/null 2>&1' \
+    inst_spec_args = ['./%s %s.f90 %s %s %s %s > /dev/null 2>&1' \
                        %(str(broadening_bash), str(inst_broad_script), \
                          temp_dir+spec_out, temp_dir+spec_out_inst, str(inst_broadening), \
-                         str(inst_broad_script_out))]
+                         str(inst_broad_script))]
     inst_process1 = Popen(inst_spec_args, shell=True).wait()
 
     # Apply instrumental broadening
-    vr_args = ['./%s %s %s %s %s %s > /dev/null 2>&1' \
+    vr_args = ['./%s %s.f90 %s %s %s %s > /dev/null 2>&1' \
                        %(str(broadening_bash), str(rot_vel_broad_script), \
                          temp_dir+spec_out_inst, temp_dir+spec_out_rv, str(rv_broadening), \
-                         str(rot_vel_broad_script_out))]
+                         str(rot_vel_broad_script))]
     vr_process1 = Popen(vr_args, shell=True).wait()
 
     return spec_out_rv
@@ -204,42 +206,64 @@ def line_masker(obs_spec_df, synth_spec_df, spec_mask_df):
 
     return mobs_spec_df, msynth_spec_df
 
+# Define the arguments to be parsed
+parser = argparse.ArgumentParser(description='Parameters to parse to derive chemical abundances')
+
+parser.add_argument('-s', '--s', '--star_name', required=True, type=str, help='The star to derive the chemical abundances for')
+parser.add_argument('-e', '--e', '--element', required=True, type=str, help='The element to measure the chemical abundance for')
+parser.add_argument('-a', '--a', '--abundance', required=True, type=float, help='The abundance value to generate the synthetic spectrum for')
+parser.add_argument('-nsd', '--nsd', '--normalized_spectra_dir', default='/blue/rezzeddine/share/fmendez/normalized_stellar_spectra/', type=str, help='Directory where the normalized stellar spectra is stored')
+parser.add_argument('-spd', '--spd', '--stellar_parameters_dir', default='/blue/rezzeddine/share/fmendez/results/stellar_parameters/', type=str, help='Directory where the stellar parameters are located')
+parser.add_argument('-lld', '--lld', '--line_list_dir', default='/blue/rezzeddine/share/fmendez/Turbospectrum2019-master/COM-v19.1/linelists/', type=str, help='Directory where the line list to generate the synthetic spectrum is stored')
+parser.add_argument('-tod', '--tod', '--temporary_output_dir', default='/blue/rezzeddine/share/fmendez/temp_dir/', type=str, help='Directory where the temporary output synthetic spectra are stored')
+parser.add_argument('-od', '--od', '--output_dir', default='/blue/rezzeddine/share/fmendez/results/abundances/temp_abund/', type=str, help='Output directory to save the measured chemical abundances')
+parser.add_argument('-slm', '--slm', '--spectral_line_mask', default='/blue/rezzeddine/share/fmendez/atomic_line_mask/chemical_abundances_lines.csv', type=str, help='List of atomic lines used to chemical abundances')
+parser.add_argument('-tsbs', '--tsbs', '--turbo_spectrum_bash_script', default='abund_spec_create.sh', type=str, help='Bash script to run the TurboSpectrum script')
+parser.add_argument('-tss', '--tss', '--turbo_spectrum_script', default='ts_script_abu.com', type=str, help='TurboSpectrum script to generate synthetic spectra')
+parser.add_argument('-bbs', '--bbs', '--broadening_bash_script', default='spectra_smooth.sh', type=str, help='Bash script to run the script to apply broadening by instrumentation')
+parser.add_argument('-ibs', '--ibs', '--instrumental_broadening_script', default='inst_broadening', type=str, help='Script to apply instrumental broadening')
+parser.add_argument('-rbs', '--rbs', '--rotational_broadening_script', default='rot_vel', help='Script to apply rotational broadening')
+parser.add_argument('-ps', '--ps', '--parameter_source', default='measured', type=str, help='Source of stellar parameters')
+parser.add_argument('-S', '--S', '--sigma', default=1., type=float, help='Sigma factor to add to the parameters uncertainty')
+
+args = parser.parse_args()
+
+
 # Define the different directory paths
-observed_spectrum_dir = '/blue/rezzeddine/share/fmendez/normalized_stellar_spectra/'
-parameters_results_dir = '/blue/rezzeddine/share/fmendez/results/stellar_parameters/'
-linelist_dir = '/blue/rezzeddine/share/fmendez/Turbospectrum2019-master/COM-v19.1/linelists/'
-temp_dir = '/blue/rezzeddine/share/fmendez/temp_dir/'
-save_dir = '/blue/rezzeddine/share/fmendez/results/abundances/temp_abund/'
+# observed_spectrum_dir = '/blue/rezzeddine/share/fmendez/normalized_stellar_spectra/' D
+# parameters_results_dir = '/blue/rezzeddine/share/fmendez/results/stellar_parameters/' D
+# linelist_dir = '/blue/rezzeddine/share/fmendez/Turbospectrum2019-master/COM-v19.1/linelists/' D
+# temp_dir = '/blue/rezzeddine/share/fmendez/temp_dir/' D
+# save_dir = '/blue/rezzeddine/share/fmendez/results/abundances/temp_abund/' D
 
 # Define the input variables
-marcs_bash = sys.argv[1]
-marcs_script = sys.argv[2]
-ts_bash = sys.argv[3]
-ts_script = sys.argv[4]
-abundance = np.round(float(sys.argv[5]), 2)
-broadening_bash = sys.argv[6]
-inst_broad_script = sys.argv[7]
-inst_broad_script_out = sys.argv[8]
-rot_vel_broad_script = sys.argv[9]
-rot_vel_broad_script_out = sys.argv[10]
-star = sys.argv[11]
-element = sys.argv[12]
+# marcs_bash = sys.argv[1] D
+# marcs_script = sys.argv[2] D
+# ts_bash = sys.argv[3] D
+# ts_script = sys.argv[4] D
+# abundance = np.round(float(sys.argv[5]), 2) D
+# broadening_bash = sys.argv[6] D
+# inst_broad_script = sys.argv[7] D
+# inst_broad_script_out = sys.argv[8] D
+# rot_vel_broad_script = sys.argv[9] D
+# rot_vel_broad_script_out = sys.argv[10] D
+# star = sys.argv[11] D
+# element = sys.argv[12] D
 
 # Define additional variables
 wl_range = [4200., 6600.]
-parameters_source = 'measured'
-sigma = 2.
+# parameters_source = 'measured' D
+# sigma = 1. D
 
 # Open the data we are going to use
 asplund_solar_abund = pd.read_csv('./asplund_solar_abund.csv', sep='\s+', names=['Atomic_Number','Element','Abundance','Abundance_err'])
-
 atomic_numbers = pd.read_csv('./atomic_numbers.csv')
-atomic_num = atomic_numbers[atomic_numbers['Symbol'] == element]['AtomicNumber'].values[0]
+atomic_num = atomic_numbers[atomic_numbers['Symbol'] == args.e]['AtomicNumber'].values[0]
 
-if parameters_source == 'measured':
+if args.ps == 'measured':
 
     # Open the measured stellar parameters
-    samples = np.genfromtxt(parameters_results_dir+star+'_corner_values.txt')
+    samples = np.genfromtxt('%s%s_corner_values.txt' %(args.spd, args.s))
     parameters = [np.percentile(samples[:,i], [16, 50,84]) for i in range(samples.shape[1] - 2)]
     errors = [np.diff(np.percentile(samples[:,i], [16, 50,84])) for i in range(samples.shape[1] -2)]
 
@@ -261,7 +285,7 @@ if parameters_source == 'measured':
 
         # Save the uncertainties and parameters to a list
         parameters_out.append(parameters[i][1])
-        uncertainties_out.append(uncertainty*sigma)
+        uncertainties_out.append(uncertainty*args.S)
 
 # Add the uncertaintis to the parameters keeping one of them constant
 parameters_and_uncertainties = [np.array(parameters_out)]
@@ -282,23 +306,23 @@ star_parameters = pd.DataFrame(np.array(parameters_and_uncertainties), \
                                columns=['Teff','logg','Fe/H','turb_vel','vsini'])
 
 # Open the observed spectrum and mask it based on the wavelength range
-obs_spec = pd.read_csv(observed_spectrum_dir+star+'_spectrum.dat', delimiter='\s+', names=['Wave','Flux','Intensity'], engine='python').fillna(1.0)
+obs_spec = pd.read_csv('%s%s_spectrum.dat' %(args.nsd, args.s), delimiter='\s+', names=['Wave','Flux','Intensity'], engine='python').fillna(1.0)
 spec_mask = ((obs_spec['Wave'] >= wl_range[0]) & (obs_spec['Wave'] <= wl_range[1]))
 
 obs_spec = obs_spec[spec_mask].reset_index(drop=True)
 
 # Open the abundance line list and mask it based on element and wavelength range
-if parameters_source == 'measured':
-    literature_star_linelist = pd.read_csv('./abundance_linelist_v4.csv', sep='\s+', names=['Wave','Potential','loggf','Element','Region']).fillna(0.5)
+if args.ps == 'measured':
+    literature_star_linelist = pd.read_csv(args.slm, sep='\s+', names=['Wave','Potential','loggf','Element','Region']).fillna(0.5)
     linelist_mask = ((literature_star_linelist['Wave'] >= wl_range[0]) & (literature_star_linelist['Wave'] <= wl_range[1]))
 
     linelist_out = literature_star_linelist[linelist_mask].reset_index(drop=True)
 
-if element+'I' in linelist_out['Element'] and element+'II' in linelist_out['Element']:
-    lines_out = linelist_out[((linelist_out['Element'] == element+'I') & (linelist_out['Element'] == element+'II'))].reset_index(drop=True)
+if args.e+'I' in linelist_out['Element'] and args.e+'II' in linelist_out['Element']:
+    lines_out = linelist_out[((linelist_out['Element'] == args.e+'I') & (linelist_out['Element'] == args.e+'II'))].reset_index(drop=True)
 
 else:
-    lines_out = linelist_out[linelist_out['Element'] == element+'I'].reset_index(drop=True)
+    lines_out = linelist_out[linelist_out['Element'] == args.e+'I'].reset_index(drop=True)
 
 # Iterate over all the combinations of stellar parameters and perform the abundance measurements
 synspec_files = []
@@ -309,16 +333,16 @@ chis2 = []
 for idx in tqdm(star_parameters.index):
 
     # Generate the MARCS atmospheric model
-    model_params, model_out = generate_marcs_model(star, star_parameters.iloc[idx], marcs_bash, marcs_script)
+    model_params, model_out = generate_marcs_model(args.s, star_parameters.iloc[idx])
 
     # Generate the synthetic spectra
-    synth_spec_out = generate_synthetic_spectra(model_params, star_parameters.iloc[idx], abundance, model_out, element, atomic_num, linelist_dir, ts_bash, ts_script, temp_dir)
+    synth_spec_out = generate_synthetic_spectra(model_params, star_parameters.iloc[idx], round(args.a, 2), model_out, args.e, atomic_num, args.lld, args.tsbs, args.tss, args.tod)
 
     # Apply instrumental and rotation broadening
-    final_synth_spec = spec_broadening(star_parameters.iloc[idx], synth_spec_out, temp_dir, broadening_bash, inst_broad_script, inst_broad_script_out, rot_vel_broad_script, rot_vel_broad_script_out)
+    final_synth_spec = spec_broadening(star_parameters.iloc[idx], synth_spec_out, args.tod, args.bbs, args.ibs, args.rbs)
 
     # Open the synthetic spectrum and re-sample it
-    synth_spec = pd.read_csv(temp_dir+final_synth_spec, sep='\s+', names=['Wave','Flux','Int'])
+    synth_spec = pd.read_csv('%s%s' %(args.tod, final_synth_spec), sep='\s+', names=['Wave','Flux','Int'])
     resamp_spec = spec_resampler(obs_spec, synth_spec)
 
     # Mask the absorption lines to use for the fit
@@ -329,8 +353,8 @@ for idx in tqdm(star_parameters.index):
 
     # Add all the calculations to the lists
     synspec_files.append(final_synth_spec)
-    elements.append(element)
-    abundances.append(abundance)
+    elements.append(args.e)
+    abundances.append(round(args.a,2))
     chis2.append(chi2)
 
 # Save the data into a DataFrame
@@ -341,4 +365,5 @@ results_out['Abundance'] = abundances
 results_out['Chi2'] = chis2
 
 # Save the results
-results_out.to_csv(save_dir+star+'_'+element+'_'+str(abundance)+'_v3_2.csv', index=False, sep=' ')
+# results_out.to_csv(save_dir+star+'_'+element+'_'+str(abundance)+'_v3_2.csv', index=False, sep=' ')
+results_out.to_csv('%s%s_%s_%s.csv' %(args.od, args.s, args.e, str(round(args.a, 2))), index=False, sep=' ')

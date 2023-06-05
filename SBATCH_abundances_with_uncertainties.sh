@@ -2,14 +2,15 @@
 #SBATCH --job-name=abundances                           # Job name
 #SBATCH --mail-type=END,FAIL                            # Mail events (NONE, BEGIN, END, FAIL, ALL)
 #SBATCH --mail-user=fmendez@ufl.edu                     # Where to send mail
-#SBATCH --qos=rezzeddine-b                           # Request normal or burst cores
+#SBATCH --account=rezzeddine                            # Account name
+#SBATCH --qos=rezzeddine-b                              # Request normal or burst cores
 #SBATCH --nodes=1                                       # Run all processes on a single node
 #SBATCH --ntasks=1                                      # Run a single task
 #SBATCH --cpus-per-task=2                               # Number of CPU cores per task
-#SBATCH --mem-per-cpu=2gb                                      # total memory limit
+#SBATCH --mem-per-cpu=2gb                               # total memory limit
 #SBATCH --time=24:00:00                                 # Time limit hrs:min:sec
-#SBATCH --output=../log_files/abund_out_%A_%a.out        # Standard output log
-#SBATCH --error ../log_files/abund_error_%A_%a.error     # Standard error log
+#SBATCH --output=../log_files/abund_out_%A_%a.out       # Standard output log
+#SBATCH --error ../log_files/abund_error_%A_%a.error    # Standard error log
 #SBATCH --array=1-21                                    # Array range
 
 date;hostname
@@ -60,7 +61,8 @@ rot_vel_broad_script_out=rot_vel_${input_idx}_${SLURM_ARRAY_TASK_ID}
 
 # Derive the abundances
 echo Running abundances_with_uncertainties_${input_idx}_${SLURM_ARRAY_TASK_ID}.py for ${star} ${element} using a ${abund_arr[$index]} abundance value
-python3 /blue/rezzeddine/share/fmendez/pipeline/abundances_with_uncertainties_${input_idx}_${SLURM_ARRAY_TASK_ID}.py model_create.sh scratch ${ts_bash} ${ts_script} ${abundance} ${broadening_bash} ${inst_broad_script} ${inst_broad_script_out} ${rot_vel_broad_script} ${rot_vel_broad_script_out} ${star} ${element} &
+#python3 /blue/rezzeddine/share/fmendez/pipeline/abundances_with_uncertainties_${input_idx}_${SLURM_ARRAY_TASK_ID}.py model_create.sh scratch ${ts_bash} ${ts_script} ${abundance} ${broadening_bash} ${inst_broad_script} ${inst_broad_script_out} ${rot_vel_broad_script} ${rot_vel_broad_script_out} ${star} ${element} &
+python3 /blue/rezzeddine/share/fmendez/pipeline/abundances_with_uncertainties_${input_idx}_${SLURM_ARRAY_TASK_ID}.py -tsbs ${ts_bash} -tss ${ts_script} -a ${abundance} -bbs ${broadening_bash} -ibs ${inst_broad_script_out} -rbs ${rot_vel_broad_script_out} -s ${star} -e ${element} &
 
 bg_pid=$!
 wait $bg_pid

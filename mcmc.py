@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 import pandas as pd
 import os
+import sys
 from specutils import Spectrum1D
 from specutils.manipulation import LinearInterpolatedResampler
 from astropy import units as u
@@ -11,8 +11,9 @@ import emcee
 import corner
 from multiprocessing import Pool
 from subprocess import Popen, PIPE
-import time
 import random
+import time
+import argparse
 
 
 def spec_resampler(obs_spec, sample_spec):
@@ -64,6 +65,7 @@ def spec_out(params, synth_spec_dir):
     return min_spec_5000_df, min_spec_5500_df, max_spec_5000_df, max_spec_5500_df
 
 def spec_interpolate(min_spec_df, max_spec_df):
+
     # Set the flux from both spectra into a single dataframe along with the wavelength values
     synth_spectra_df = pd.concat([min_spec_df['Flux'], max_spec_df['Flux']], axis=1)
     synth_spectra_df.columns = ['Flux_min','Flux_max']
@@ -143,49 +145,7 @@ def line_masker(obs_spec_df, synth_spec_df, spec_mask_df):
 
     return mobs_spec_df, msynth_spec_df
 
-
-# Define the paths to the diffeent directories and flles
-synth_spec_dir = '../synthetic_spectra/'
-star_spec_dir = '../normalized_stellar_spectra/'
-mock_sun_spec = '../mock_spectra/Sun_mock_T5777_g+4.4_z0.00_vt1.00_vr-2.0_inst-2.5_Na6.24_Mg7.60_5000-6000.spec'
-line_mask = './spec_mask_v2.txt'
-results_dir = '../results/'
-
-# Open some of the files we are going to use
-star = 'Sun'
-mock_spec_df = pd.read_csv(mock_sun_spec, delimiter='\s+', names=['Wave','Flux','Intensity'], engine='python')
-obs_spec_df = pd.read_csv(star_spec_dir+star+'_5000-6000.dat', delimiter='\s+', names=['Wave','Flux','Intensity'], engine='python')
-spec_mask_df = pd.read_csv(line_mask, delimiter='\s+', engine='python', names=['wave','element','potential','loggf','region']).fillna(0.5)
-
-# Mask the lines by loggf
-sm_mask = ((spec_mask_df['element'] == 'FeI') & (spec_mask_df['loggf'] >= -1.5))
-
-idx = spec_mask_df[sm_mask].index.values
-spec_mask_df = spec_mask_df.drop(index=idx, axis=0).reset_index(drop=True)
-
-# Resample the spectrum and create the flux error array
-resamp_spec_df = spec_resampler(obs_spec_df, mock_spec_df)
-resamp_spec_df['Flux_err'] = np.zeros([resamp_spec_df['Flux'].size]) + 0.05
-
-
-# Define the parameter grid space
-tgrid = np.linspace(4500, 6500, 21)
-ggrid = np.linspace(4.0, 5.0, 6)
-zgrid = np.linspace(-1., 1., 11)
-vtgrid = np.linspace(1., 2., 6)
-vrgrid = np.linspace(1., 10., 10)
-nagrid = np.linspace(5.74, 6.74, 5)
-mggrid = np.linspace(7.10, 8.10, 5)
-
-matrix = {'T':tgrid,
-          'logg':ggrid,
-          'Z':zgrid,
-          'vt':vtgrid,
-          'vr':vrgrid,
-          'Na':nagrid,
-          'Mg':mggrid}
-
-def log_likelihood(theta, obs_spec, matrix, spec_mask):
+def log_likelihood(theta, obs_spec, matrix, spec_mask, synth_spec_dir):
     # Define the spectral parameters
     T, logg, z, vt, vr, na, mg = theta
 
@@ -241,11 +201,66 @@ def log_prior(theta):
         return 0.0
     return -np.inf
 
-def log_probability(theta, obs_spec, matrix, spec_mask):
+def log_probability(theta, obs_spec, matrix, spec_mask, synth_spec_dir):
     lp = log_prior(theta)
     if not np.isfinite(lp):
         return -np.inf
-    return lp + log_likelihood(theta, obs_spec, matrix, spec_mask)
+    return lp + log_likelihood(theta, obs_spec, matrix, spec_mask, synth_spec_dir)
+
+
+# Define all the parameters to parse into the code
+parser = argparse.ArgumentParser(description='Parameters to parse to measure stellar parameters using MCMC')
+
+parser.add_argument('-s', '--s', '--star_name', required=True, type=str, help='The star name to calculate the parameters for')
+parser.add_argument('-nw', '--nw', '--walkers_number', default=250, type=int, help='Number of walkers for the MCMC')
+parser.add_argument('-ns', '--ns', '--sample_number', default=1000, type=int, help='Number of samples for the MCMC')
+parser.add_argument('-ssd', '--ssd', '--synt_spec_dir', default='/blue/rezzeddine/share/fmendez/synthetic_spectra/', type=str, help='Directory where the synthetic spectra library is stored')
+parser.add_argument('-nsd', '--nsd', '--normalized_spectra_dir', default='/blue/rezzeddine/share/fmendez/normalized_stellar_spectra/', type=str, help='Directory where the normalized stellar spectra is stored')
+parser.add_argument('-mss', '--mss', '--mock_synt_spec', default='/blue/rezzeddine/share/fmendez/mock_spectra/Sun_mock_T5777_g+4.4_z0.00_vt1.00_vr-2.0_inst-2.5_Na6.24_Mg7.60_5000-6000.spec', type=str, help='Mock synthetic spectrum used for spectral resampling')
+parser.add_argument('-slm', '--slm', '--spectral_line_mask', default='/blue/rezzeddine/share/fmendez/atomic_line_mask/stellar_parameters_lines.txt', type=str, help='List of atomic lines used to measure stellar parameters')
+parser.add_argument('-od', '--od', '--output_dir', default='/blue/rezzeddine/share/fmendez/results/stellar_parameters/', type=str, help='Directory to save the output of the MCMC')
+parser.add_argument('-sw', '--sw', '--save_walkers', default=False, type=bool, help='Boolean to decide if the user wants to save the MCMC walkers')
+
+args = parser.parse_args()
+
+# Open some of the files we are going to use
+mock_spec_df = pd.read_csv(args.mss, delimiter='\s+', names=['Wave','Flux','Intensity'], engine='python')
+obs_spec_df = pd.read_csv('%s%s_spectrum.dat' %(args.nsd, args.s), delimiter='\s+', names=['Wave','Flux','Intensity'], engine='python')
+spec_mask_df = pd.read_csv(args.slm, delimiter='\s+', engine='python', names=['wave','element','potential','loggf','region']).fillna(0.5)
+
+# Mask the observed spectrum wavelength between 5000 A - 6000 A
+wave_mask = ((obs_spec_df['Wave'] >= 5000.) & (obs_spec_df['Wave'] <= 6000.))
+obs_spec_df = obs_spec_df[wave_mask].reset_index(drop=True)
+
+# Mask the lines by loggf
+sm_mask = ((spec_mask_df['element'] == 'FeI') & (spec_mask_df['loggf'] >= -1.5))
+
+idx = spec_mask_df[sm_mask].index.values
+spec_mask_df = spec_mask_df.drop(index=idx, axis=0).reset_index(drop=True)
+
+# Resample the spectrum and create the flux error array
+resamp_spec_df = spec_resampler(obs_spec_df, mock_spec_df)
+resamp_spec_df['Flux_err'] = np.zeros([resamp_spec_df['Flux'].size]) + 0.05
+
+print(resamp_spec_df)
+
+# Define the parameter grid space
+tgrid = np.linspace(4500, 6500, 21)
+ggrid = np.linspace(4.0, 5.0, 6)
+zgrid = np.linspace(-1., 1., 11)
+vtgrid = np.linspace(1., 2., 6)
+vrgrid = np.linspace(1., 10., 10)
+nagrid = np.linspace(5.74, 6.74, 5)
+mggrid = np.linspace(7.10, 8.10, 5)
+
+matrix = {'T':tgrid,
+          'logg':ggrid,
+          'Z':zgrid,
+          'vt':vtgrid,
+          'vr':vrgrid,
+          'Na':nagrid,
+          'Mg':mggrid}
+
 
 # Select the initial parameters where the sampling is going to start
 T0, logg0, Z0, vt0, vr0, na0, mg0 = 5500., 4.5, 0.0, 1.5, 5.0, 6.24, 7.60
@@ -261,7 +276,9 @@ mgstep = np.linspace(-.25, .25, 2)
 
 # Set up the starting parameter fo each walker
 ndim = 7
-nwalkers = 250
+nwalkers = args.nw
+nsamples = args.ns
+
 pos = np.array([np.array([T0, logg0, Z0, vt0, vr0, na0, mg0]) + \
                np.array([random.choice(tstep),
                          random.choice(gstep),
@@ -272,17 +289,24 @@ pos = np.array([np.array([T0, logg0, Z0, vt0, vr0, na0, mg0]) + \
                          random.choice(mgstep)]) * np.random.randn(ndim) for i in range(nwalkers)])
 
 # Run the MCMC code by applying paralelization
-with Pool() as pool:
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, pool=pool, args=(resamp_spec_df, matrix, spec_mask_df))
-    sampler.run_mcmc(pos, 1000, progress=True)
+print('Starting the MCMC...')
 
-# Get the results from the MCMC
+with Pool() as pool:
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, pool=pool, args=(resamp_spec_df, matrix, spec_mask_df, args.ssd))
+    sampler.run_mcmc(pos, nsamples, progress=True, progress_kwargs={"dynamic_ncols": True})
+
+print('Done!')
+
+# Get the results from the MCMC and save the output
 samples_corner = sampler.flatchain
 results = samples_corner[np.argmax(sampler.flatlnprobability)]
 
-# Get the walkers information
-samples_walkers = sampler.get_chain()
-samples_walkers_rs = samples_walkers.reshape(samples_walkers.shape[0], -1)
+np.savetxt('%s%s_corner_values.txt' %(args.od, args.s), samples_corner)
 
-np.savetxt('../results/stellar_parameters/'+star+'_corner_values.txt', samples_corner)
-np.savetxt('../results/stellar_parameters/'+star+'_walkers.txt', samples_walkers_rs)
+if args.sw == True:
+    
+    # Get the walkers information and save the output if conditional is true
+    samples_walkers = sampler.get_chain()
+    samples_walkers_rs = samples_walkers.reshape(samples_walkers.shape[0], -1)
+
+    np.savetxt('%smcmc_walkers_out/%s_walkers.txt' %(args.od, args.s), samples_walkers_rs)

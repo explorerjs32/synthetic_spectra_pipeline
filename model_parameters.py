@@ -9,6 +9,8 @@ from specutils.manipulation import LinearInterpolatedResampler
 from astropy import units as u
 import os
 import sys
+import argparse
+
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -97,30 +99,31 @@ def generate_marcs_model(star, parameters, marcs_bash, marcs_script):
 
     return model_df, model
 
-parameters_results_dir = '/blue/rezzeddine/share/fmendez/results/stellar_parameters/'
-literature_values_dir = '/blue/rezzeddine/share/fmendez/literature_tables/'
-models_out_dir = '/blue/rezzeddine/share/fmendez/results/marcs_models/'
+# Define all the parameters to parse into the code
+parser = argparse.ArgumentParser(description='Parameters to parse to create the MARCS models for a set of stellar parameters')
 
-# Define all the input variables
-star = sys.argv[1]
-marcs_bash = 'model_create.sh'
-marcs_script = 'scratch'
-sigma = 2.
+parser.add_argument('-s', '--s', '--star_name', required=True, type=str, help='The star name to calculate the atmospheric models for')
+parser.add_argument('-pd', '--pd', '-parameters_dir', default='/blue/rezzeddine/share/fmendez/results/stellar_parameters/', type=str, help='Directory where the stellar parameters are located')
+parser.add_argument('-mod', '--mod', '-model_out_dir', default='/blue/rezzeddine/share/fmendez/results/marcs_models/', type=str, help='Directory where the output MARCS models are saved')
+parser.add_argument('-mbs', '--mbs', '--marcs_bash_script', default='model_create.sh', type=str, help='Bash script to run the MARCS models script')
+parser.add_argument('-ms', '--ms', '--marcs_script', default='scratch', type=str, help='Script to generate the MARCS models')
+parser.add_argument('-ps', '--ps', '--parameter_source', default='measured', type=str, help='Source of stellar parameters')
+parser.add_argument('-S', '--S', '--sigma', default=1., type=float, help='Sigma factor to add to the parameters uncertainty')
 
-# Extract the stellar parameters based on measurements or literature values
-parameters_source = 'measured'
+args = parser.parse_args()
 
-if parameters_source == 'literature':
+
+if args.ps == 'literature':
 
     # Open the stellar parameters from the literature
-    literature_parameters_df = pd.read_csv(literature_values_dir+'benchmark_stars_literature_parameters.txt', sep='\s+', \
+    literature_parameters_df = pd.read_csv('%sbenchmark_stars_literature_parameters.txt' %args.pd, sep='\s+', \
                                            names=['Star','Name','Teff','e_Teff','logg','e_logg','Fe/H','e_Fe/H','turb_vel','e_turb_vel','vsini','e_vsini'])
     star_parameters = literature_parameters_df[literature_parameters_df['Name'] == star]
 
-if parameters_source == 'measured':
+if args.ps == 'measured':
 
     # Open the measured stellar parameters
-    samples = np.genfromtxt(parameters_results_dir+star+'_corner_values.txt')
+    samples = np.genfromtxt('%s%s_corner_values.txt' %(args.pd, args.s))
     parameters = [np.percentile(samples[:,i], [16, 50,84]) for i in range(samples.shape[1] - 2)]
     errors = [np.diff(np.percentile(samples[:,i], [16, 50,84])) for i in range(samples.shape[1] -2)]
 
@@ -142,7 +145,7 @@ if parameters_source == 'measured':
 
         # Save the uncertainties and parameters to a list
         parameters_out.append(parameters[i][1])
-        uncertainties_out.append(uncertainty*sigma)
+        uncertainties_out.append(uncertainty*args.S)
 
 # Add the uncertaintis to the parameters keeping one of them constant
 parameters_and_uncertainties = [np.array(parameters_out)]
@@ -165,4 +168,4 @@ star_parameters = pd.DataFrame(np.array(parameters_and_uncertainties), \
 for idx in tqdm(star_parameters.index):
 
     # Generate the MARCS atmospheric model
-    model_params, model_out = generate_marcs_model(star, star_parameters.iloc[idx], marcs_bash, marcs_script)
+    model_params, model_out = generate_marcs_model(args.s, star_parameters.iloc[idx], args.mbs, args.ms)

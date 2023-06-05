@@ -3,21 +3,27 @@ import pandas as pd
 from tqdm import tqdm
 import shutil
 import sys
+import argparse
+from subprocess import Popen, PIPE
 
-# Define the different data directories
-parameters_results_dir = '/blue/rezzeddine/share/fmendez/results/stellar_parameters/'
-abundances_dir = '/blue/rezzeddine/share/fmendez/results/abundances/temp_abund/'
-asplund_solar_abundances_dir = '/blue/rezzeddine/share/fmendez/pipeline/'
-temp_dir = '/blue/rezzeddine/share/fmendez/temp_dir/'
-synth_spec_save_dir = '/blue/rezzeddine/share/fmendez/results/synthetic_spectra/abundances/'
-results_save_dir = '/blue/rezzeddine/share/fmendez/results/parameters_and_abundances/'
 
-# Define the input variables
-star = str(sys.argv[1])
+# Define the different arguments to parse into the code
+parser = argparse.ArgumentParser(description='Parameters to parse to save the stellar parameters, abundances, and save the synthetic specta')
+
+parser.add_argument('-s','--s','--star_name', required=True, type=str, help='The star to save the results for')
+parser.add_argument('-pd','--pd','--parameters_dir', type=str, default='/blue/rezzeddine/share/fmendez/results/stellar_parameters/', help='The directory where the stellar parameters are saved')
+parser.add_argument('-ad','--ad','--abundances_dir', type=str, default='/blue/rezzeddine/share/fmendez/results/abundances/temp_abund/', help='Directory where the chemical abundances are saved')
+parser.add_argument('-td','--td','--temp_dir', type=str, default='/blue/rezzeddine/share/fmendez/temp_dir/', help='Directory where the temporary files are saved')
+parser.add_argument('-ssd','--ssd','--synthetic_spectra_dir', type=str, default='/blue/rezzeddine/share/fmendez/results/synthetic_spectra/abundances/', help='Directory where to save the synthetic spectra')
+parser.add_argument('-rsd','--rsd','--results_save_dir', type=str, default='/blue/rezzeddine/share/fmendez/results/parameters_and_abundances/', help='Directrory where the final parameters and abundances are saved')
+
+args = parser.parse_args()
+
+# Define the elements to get the abundances for
 elements = ['Mg','Si','Ca','Sc','Ti','V','Cr','Mn','Co','Ni']
 
 # Get the stellar parameters of the input star
-samples = np.genfromtxt(parameters_results_dir+star+'_corner_values.txt')
+samples = np.genfromtxt('%s%s_corner_values.txt' %(args.pd, args.s))
 parameters = [np.percentile(samples[:,i], [16, 50,84]) for i in range(samples.shape[1] - 2)]
 errors = [np.diff(np.percentile(samples[:,i], [16, 50,84])) for i in range(samples.shape[1] -2)]
 
@@ -31,7 +37,7 @@ abunds_delta_t, abunds_delta_g, abunds_delta_z, abunds_delta_vt, abunds_delta_vs
 for element in tqdm(elements):
 
     # Create the abundance range based on the chemical element
-    asplund_abundances = pd.read_csv(asplund_solar_abundances_dir+'asplund_solar_abund.csv', sep=' ', \
+    asplund_abundances = pd.read_csv('./asplund_solar_abund.csv', sep=' ', \
                                      names=['Atomic_Number','Element','Abundance','Abundance_Error'])
     solar_abundance = asplund_abundances[asplund_abundances['Element'] == element]['Abundance'].values[0]
 
@@ -48,7 +54,7 @@ for element in tqdm(elements):
     for abundance in abundance_range:
 
         # Open the derived abundances for each set of parameters
-        derived_abundances_df = pd.read_csv('%s%s_%s_%s_v3.csv' %(abundances_dir, star, element, str(round(abundance, 2))), sep=' ')
+        derived_abundances_df = pd.read_csv('%s%s_%s_%s.csv' %(args.ad, args.s, element, str(round(abundance, 2))), sep=' ')
 
         # Store each chi2 value into the respective list
         parameters_abunds.append(derived_abundances_df.iloc[0]['Chi2'])
@@ -90,11 +96,11 @@ for element in tqdm(elements):
     for i, abund_out in enumerate(abundances_out):
 
         # Extract the synthetic spectra of the measured abundance
-        measured_abundance_df = pd.read_csv('%s%s_%s_%s_v3.csv' %(abundances_dir, star, element, str(round(abund_out, 2))), sep=' ')
+        measured_abundance_df = pd.read_csv('%s%s_%s_%s.csv' %(args.ad, args.s, element, str(round(abund_out, 2))), sep=' ')
         spec_filename = measured_abundance_df['Syntspec_File'].iloc[i]
 
         # Move the synthetic spectra file to the results directory
-        shutil.copy(temp_dir+spec_filename, synth_spec_save_dir+sub_dirs[i]+'/'+star+'_'+sub_dirs[i]+'_'+spec_filename)
+        shutil.copy(args.td+spec_filename, args.ssd+sub_dirs[i]+'/'+args.s+'_'+sub_dirs[i]+'_'+spec_filename)
 
 # Save the values and uncertainties to a Dataframe
 parameters_and_abundances_df = pd.DataFrame()
@@ -107,4 +113,8 @@ parameters_and_abundances_df['Delta_Fe/H'] = [np.nan, np.nan, np.nan, np.nan, np
 parameters_and_abundances_df['Delta_vt'] = [np.nan, np.nan, np.nan, np.nan, np.nan] + abunds_delta_vt
 parameters_and_abundances_df['Delta_vsini'] = [np.nan, np.nan, np.nan, np.nan, np.nan] + abunds_delta_vsini
 
-parameters_and_abundances_df.to_csv(results_save_dir+star+'_parameters_and_abundances.csv', index=False, sep=' ')
+parameters_and_abundances_df.to_csv(args.rsd+args.s+'_parameters_and_abundances.csv', index=False, sep=' ')
+
+# Remove all the extra files
+remove_synthspec = Popen(['rm %s*' %(args.td)], shell=True).wait()
+remove_abunds = Popen(['rm %s*' %(args.ad)], shell=True).wait()

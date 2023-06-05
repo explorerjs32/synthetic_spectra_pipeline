@@ -1,20 +1,21 @@
 #!/bin/bash
-#SBATCH --job-name=abundances                           # Job name
-#SBATCH --mail-type=END,FAIL                            # Mail events (NONE, BEGIN, END, FAIL, ALL)
-#SBATCH --mail-user=fmendez@ufl.edu                     # Where to send mail
-#SBATCH --qos=rezzeddine-b                              # Request normal or burst cores
-#SBATCH --nodes=1                                       # Run all processes on a single node
-#SBATCH --ntasks=1                                      # Run a single task
-#SBATCH --cpus-per-task=1                               # Number of CPU cores per task
-#SBATCH --mem-per-cpu=4gb                               # total memory limit
-#SBATCH --time=24:00:00                                 # Time limit hrs:min:sec
+#SBATCH --job-name=abundances                                  # Job name
+#SBATCH --mail-type=END,FAIL                                   # Mail events (NONE, BEGIN, END, FAIL, ALL)
+#SBATCH --mail-user=fmendez@ufl.edu                            # Where to send mail
+#SBATCH --account=rezzeddine                                   # Account name
+#SBATCH --qos=rezzeddine-b                                     # Request normal or burst cores
+#SBATCH --nodes=1                                              # Run all processes on a single node
+#SBATCH --ntasks=1                                             # Run a single task
+#SBATCH --cpus-per-task=1                                      # Number of CPU cores per task
+#SBATCH --mem-per-cpu=4gb                                      # total memory limit
+#SBATCH --time=24:00:00                                        # Time limit hrs:min:sec
 #SBATCH --output=../log_files/master_abund_out_%A_%a.out       # Standard output log
 #SBATCH --error ../log_files/master_abund_error_%A_%a.error    # Standard error log
-#SBATCH --array=0-9                                     # Array range
+#SBATCH --array=0-9                                            # Array range
 
 date;hostname
 # Define the star we want to do the analysis for
-star="$1"
+star=$1
 
 # Define the index to input in the second sbatch script
 input_idx=${SLURM_ARRAY_TASK_ID}
