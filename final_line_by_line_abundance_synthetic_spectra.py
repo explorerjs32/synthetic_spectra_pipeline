@@ -2,18 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from subprocess import Popen, PIPE
-import time
-from tqdm import tqdm
-from specutils import Spectrum1D
 from specutils.manipulation import LinearInterpolatedResampler
 from astropy import units as u
-import os
-import sys
 import shutil
 import argparse
 
-import warnings
-warnings.filterwarnings("ignore")
 
 def marcs_reformat(df):
     # Re-format the temperatures
@@ -48,7 +41,7 @@ def generate_marcs_model(star, parameters):
     zs = np.linspace(-1.0, 1.0, 9)
 
     # Get the parameters for the MARCS models
-    teff, logg, z = parameters['Teff'].values, parameters['logg'].values, parameters['Fe/H'].values
+    teff, logg, z = parameters['Teff'], parameters['logg'], parameters['Fe/H']
 
     # Find the closest interpolation parameters within the grid space
     min_teff, max_teff = Ts[np.argsort(abs(Ts - teff))[0]], Ts[np.argsort(abs(Ts - teff))[1]]
@@ -91,33 +84,34 @@ def generate_marcs_model(star, parameters):
 
     return model_df, model
 
-def generate_synthetic_spectra(model_params, stellar_params, model, ts_bash, ts_script):
+def generate_synthetic_spectra(model_params, stellar_params, abund, model, element, atomic_number, linelist_dir, ts_bash, ts_script, temp_dir):
 
     # Define the necesary parameters for the synthetic spectra
     model_out = model
-    min_wl, max_wl, dwl = '5000', '6000', '0.01'
-    z, turvel, na_abund, mg_abund = str(model_params['z'].values[0]), str(round(stellar_params['turb_vel'].values[0], 2)), str(round(stellar_params['Na'].values[0], 2)), str(round(stellar_params['Mg'].values[0], 2))
-    
-    synth_spec_out = 'T'+str(model_params['Temp'].values[0])+'g'+str(model_params['logg'].values[0])+'z'+str(model_params['z'].values[0])+'vt'+str(turvel)+'_'+min_wl+'-'+max_wl+'.spec'
+    min_wl, max_wl, dwl = '4200', '6600', '0.01'
+    z, turvel = str(model_params['z'].values[0]), str(round(stellar_params['vt'], 2))
+    abundance = abund
+    synth_spec_out = 'T'+str(model_params['Temp'].values[0])+'g'+str(model_params['logg'].values[0])+'z'+str(model_params['z'].values[0])+'vt'+turvel+'_'+element+str(abundance)+'_'+min_wl+'-'+max_wl+'.spec'
+    linelist = element+'_lines.list'
     
     # Generate the synthetic spectra
-    synthspec_args = ['./%s %s %s %s %s %s %s %s %s %s %s > /dev/null 2>&1' \
-                      %(str(ts_bash), str(ts_script), model_out, min_wl, max_wl, dwl, z, turvel, synth_spec_out, na_abund, mg_abund)]
+    synthspec_args = ['./%s %s %s %s %s %s %s %s %s %s %s %s > /dev/null 2>&1' \
+                      %(str(ts_bash), str(ts_script), model_out, min_wl, max_wl, dwl, z, turvel, synth_spec_out, str(atomic_num), \
+                      str(abundance), str(linelist_dir+linelist))]
     synthspec_process = Popen(synthspec_args, shell=True).wait()
 
     return synth_spec_out
 
-
-def spec_broadening(stellar_params, spec_out, temp_dir, broadening_bash, inst_broad_script, rot_vel_broad_script):
+def spec_broadening(star, stellar_params, spec_out, temp_dir, broadening_bash, inst_broad_script, rot_vel_broad_script):
 
     # Define the broadening values
     inst_broadening = -1.2
-    rv_broadening = round(stellar_params['vsini'].values[0], 2)*-1.
+    rv_broadening = round(stellar_params['vsini'], 2)*-1.
 
     # Get the name for the broadened spectra
     split_name = spec_out.split('.spec')[0]
     spec_out_inst = split_name+'_inst'+str(inst_broadening)+'.spec'
-    spec_out_rv = split_name+'_rv'+str(rv_broadening)+'.spec'
+    spec_out_rv = star+'_'+split_name+'_rv'+str(rv_broadening)+'.spec'
 
     # Apply instrumental broadening
     inst_spec_args = ['./%s %s.f90 %s %s %s %s > /dev/null 2>&1' \
@@ -135,73 +129,42 @@ def spec_broadening(stellar_params, spec_out, temp_dir, broadening_bash, inst_br
 
     return spec_out_rv
 
+
 # Define the arguments to be parsed
 parser = argparse.ArgumentParser(description='Parameters to parse to generate synthetic spectra')
 
 parser.add_argument('-s', '--s', '--star_name', required=True, type=str, help='The star to derive the chemical abundances for')
-parser.add_argument('-spd', '--spd', '--stellar_parameters_dir', default='/blue/rezzeddine/share/fmendez/results/stellar_parameters/', type=str, help='Directory where the stellar parameters are located')
+parser.add_argument('-e', '--e', '--element', required=True, type=str, help='The element to measure the chemical abundance for')
+parser.add_argument('-spd', '--spd', '--stellar_parameters_dir', default='/blue/rezzeddine/share/fmendez/results/parameters_and_abundances/', type=str, help='Directory where the stellar parameters are located')
 parser.add_argument('-lld', '--lld', '--line_list_dir', default='/blue/rezzeddine/share/fmendez/Turbospectrum2019-master/COM-v19.1/linelists/', type=str, help='Directory where the line list to generate the synthetic spectrum is stored')
 parser.add_argument('-tod', '--tod', '--temporary_output_dir', default='/blue/rezzeddine/share/fmendez/temp_dir/', type=str, help='Directory where the temporary output synthetic spectra are stored')
-parser.add_argument('-tsbs', '--tsbs', '--turbo_spectrum_bash_script', default='spectra_create.sh', type=str, help='Bash script to run the TurboSpectrum script')
-parser.add_argument('-tss', '--tss', '--turbo_spectrum_script', default='ts_script.com', type=str, help='TurboSpectrum script to generate synthetic spectra')
+parser.add_argument('-tsbs', '--tsbs', '--turbo_spectrum_bash_script', default='abund_spectra_create.sh', type=str, help='Bash script to run the TurboSpectrum script')
+parser.add_argument('-tss', '--tss', '--turbo_spectrum_script', default='ts_script_abu.com', type=str, help='TurboSpectrum script to generate synthetic spectra')
 parser.add_argument('-bbs', '--bbs', '--broadening_bash_script', default='spectra_smooth.sh', type=str, help='Bash script to run the script to apply broadening by instrumentation')
 parser.add_argument('-ibs', '--ibs', '--instrumental_broadening_script', default='inst_broadening', type=str, help='Script to apply instrumental broadening')
 parser.add_argument('-rbs', '--rbs', '--rotational_broadening_script', default='rot_vel', help='Script to apply rotational broadening')
-parser.add_argument('-ssd','--ssd','--synthetic_spectra_dir', type=str, default='/blue/rezzeddine/share/fmendez/results/synthetic_spectra/stellar_parameters/', help='Directory where to save the synthetic spectra')
+parser.add_argument('-ssd','--ssd','--synthetic_spectra_dir', type=str, default='/blue/rezzeddine/share/fmendez/results/synthetic_spectra/abundances/', help='Directory where to save the synthetic spectra')
 
 args = parser.parse_args()
 
-# Define additional variables
-wl_range = [4200., 6600.]
 
 # Open the data we are going to use
 asplund_solar_abund = pd.read_csv('./asplund_solar_abund.csv', sep='\s+', names=['Atomic_Number','Element','Abundance','Abundance_err'])
+atomic_numbers = pd.read_csv('./atomic_numbers.csv')
+atomic_num = atomic_numbers[atomic_numbers['Symbol'] == args.e]['AtomicNumber'].values[0]
 
-# Open the measured stellar parameters
-samples = np.genfromtxt('%s%s_corner_values_v3.txt' %(args.spd, args.s))
-parameters = np.array([np.percentile(samples[:,i], [16, 50,84]) for i in range(samples.shape[1])])
-
-# Define the directory where the iron abundances are being stored and list all the files in it
-fe_abund_dir = '/blue/rezzeddine/share/fmendez/results/abundances/fe_abundances/'
-measured_fe_abunds_list = sorted(os.listdir(fe_abund_dir))
-
-# Check if the Fe abundances have been measured already
-if '%s_Fe_abundance.csv' %args.s in measured_fe_abunds_list:
-
-    print('Fe abundance has been measured! Re-write Fe/H')
-
-    # Update the metallicity parameter
-    asplund_abund = asplund_solar_abund[asplund_solar_abund['Element'].isin(['Fe'])][['Abundance','Abundance_err']]   
-    measured_abund = pd.read_csv('%s%s_Fe_abundance.csv' %(fe_abund_dir, args.s), sep='\s+')
-
-    new_met = measured_abund['Abundance'].values - asplund_abund['Abundance'].values
-
-    parameters[2,1] = new_met
-
-else:
-    pass
-
-# Convert the list of parameters to a dataframe
-star_parameters = pd.DataFrame()
-star_parameters['Teff'] = [parameters[0,1]]
-star_parameters['logg'] = [parameters[1,1]]
-star_parameters['Fe/H'] = [parameters[2,1]]
-star_parameters['turb_vel'] = [parameters[3,1]]
-star_parameters['vsini'] = [parameters[4,1]]
-star_parameters['Na'] = [parameters[5,1]]
-star_parameters['Mg'] = [parameters[6,1]]
+# Open the measured stellar parameters and abundances
+parameters_abundances = pd.read_csv('%s%s_parameters_and_abundances_v3.csv' %(args.spd, args.s), sep='\s+').set_index('Parameter').T.reset_index(drop=True).iloc[0]
+abundance = parameters_abundances[args.e]
 
 # Generate the MARCS atmospheric model
-model_params, model_out = generate_marcs_model(args.s, star_parameters)
+model_params, model_out = generate_marcs_model(args.s, parameters_abundances)
 
 # Generate the synthetic spectra
-synth_spec_out = generate_synthetic_spectra(model_params, star_parameters, model_out, args.tsbs, args.tss)
+synth_spec_out = generate_synthetic_spectra(model_params, parameters_abundances, round(abundance, 2), model_out, args.e, atomic_num, args.lld, args.tsbs, args.tss, args.tod)
 
 # Apply instrumental and rotation broadening
-final_synth_spec = spec_broadening(star_parameters, synth_spec_out, args.tod, args.bbs, args.ibs, args.rbs)
+final_synth_spec = spec_broadening(args.s, parameters_abundances, synth_spec_out, args.tod, args.bbs, args.ibs, args.rbs)
 
 # Copy the final synthetic spectra to the results directory
 shutil.copy(args.tod+final_synth_spec, args.ssd+args.s+'_v3_'+final_synth_spec)
-
-# Remove all the extra files
-remove_synthspec = Popen(['rm %s*' %(args.tod)], shell=True).wait()

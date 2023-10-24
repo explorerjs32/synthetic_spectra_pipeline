@@ -301,7 +301,7 @@ print('Done!')
 samples_corner = sampler.flatchain
 results = samples_corner[np.argmax(sampler.flatlnprobability)]
 
-np.savetxt('%s%s_corner_values.txt' %(args.od, args.s), samples_corner)
+np.savetxt('%s%s_corner_values_v3.txt' %(args.od, args.s), samples_corner)
 
 if args.sw == True:
     
@@ -309,4 +309,3 @@ if args.sw == True:
     samples_walkers = sampler.get_chain()
     samples_walkers_rs = samples_walkers.reshape(samples_walkers.shape[0], -1)
 
-    np.savetxt('%smcmc_walkers_out/%s_walkers.txt' %(args.od, args.s), samples_walkers_rs)

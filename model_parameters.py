@@ -107,45 +107,57 @@ parser.add_argument('-pd', '--pd', '-parameters_dir', default='/blue/rezzeddine/
 parser.add_argument('-mod', '--mod', '-model_out_dir', default='/blue/rezzeddine/share/fmendez/results/marcs_models/', type=str, help='Directory where the output MARCS models are saved')
 parser.add_argument('-mbs', '--mbs', '--marcs_bash_script', default='model_create.sh', type=str, help='Bash script to run the MARCS models script')
 parser.add_argument('-ms', '--ms', '--marcs_script', default='scratch', type=str, help='Script to generate the MARCS models')
-parser.add_argument('-ps', '--ps', '--parameter_source', default='measured', type=str, help='Source of stellar parameters')
-parser.add_argument('-S', '--S', '--sigma', default=1., type=float, help='Sigma factor to add to the parameters uncertainty')
 
 args = parser.parse_args()
 
 
-if args.ps == 'literature':
+# Open the asplund abundances
+asplund_solar_abund = pd.read_csv('./asplund_solar_abund.csv', sep='\s+', names=['Atomic_Number','Element','Abundance','Abundance_err'])
 
-    # Open the stellar parameters from the literature
-    literature_parameters_df = pd.read_csv('%sbenchmark_stars_literature_parameters.txt' %args.pd, sep='\s+', \
-                                           names=['Star','Name','Teff','e_Teff','logg','e_logg','Fe/H','e_Fe/H','turb_vel','e_turb_vel','vsini','e_vsini'])
-    star_parameters = literature_parameters_df[literature_parameters_df['Name'] == star]
+# Open the measured stellar parameters
+samples = np.genfromtxt('%s%s_corner_values_v3.txt' %(args.pd, args.s))
+parameters = [np.percentile(samples[:,i], [16, 50,84]) for i in range(samples.shape[1] - 2)]
+errors = [np.diff(np.percentile(samples[:,i], [16, 50,84])) for i in range(samples.shape[1] -2)]
 
-if args.ps == 'measured':
+# Define the directory where the iron abundances are being stored and list all the files in it
+fe_abund_dir = '/blue/rezzeddine/share/fmendez/results/abundances/fe_abundances/'
+measured_fe_abunds_list = sorted(os.listdir(fe_abund_dir))
 
-    # Open the measured stellar parameters
-    samples = np.genfromtxt('%s%s_corner_values.txt' %(args.pd, args.s))
-    parameters = [np.percentile(samples[:,i], [16, 50,84]) for i in range(samples.shape[1] - 2)]
-    errors = [np.diff(np.percentile(samples[:,i], [16, 50,84])) for i in range(samples.shape[1] -2)]
+# Check if the Fe abundances have been measured already
+if '%s_Fe_abundance.csv' %args.s in measured_fe_abunds_list:
 
-    # Save the parameters and respective uncertainties
-    parameters_out = []
-    uncertainties_out = []
+    print('Fe abundance has been measured! Re-write Fe/H')
 
-    for i in range(len(parameters)):
+    # Update the metallicity parameter
+    asplund_abund = asplund_solar_abund[asplund_solar_abund['Element'].isin(['Fe'])][['Abundance','Abundance_err']]   
+    measured_abund = pd.read_csv('%s%s_Fe_abundance.csv' %(fe_abund_dir, args.s), sep='\s+')
 
-        # Get the index of largest uncertainty
-        argmax_idx = np.array(errors[i]).argmax()
+    new_met = measured_abund['Abundance'].values - asplund_abund['Abundance'].values
 
-        # Add a negative or positive sign to the high uncertainty depending if it's an upper or lower value
-        if argmax_idx == 0:
-            uncertainty = errors[i][argmax_idx]*-1.
+    parameters[2][1] = new_met
 
-        if argmax_idx == 1:
-            uncertainty = errors[i][argmax_idx]
+else:
+    pass
 
-        # Save the uncertainties and parameters to a list
-        parameters_out.append(parameters[i][1])
-        uncertainties_out.append(uncertainty*args.S)
+# Save the parameters and respective uncertainties
+parameters_out = []
+uncertainties_out = []
+
+for i in range(len(parameters)):
+
+    # Get the index of largest uncertainty
+    argmax_idx = np.array(errors[i]).argmax()
+
+    # Add a negative or positive sign to the high uncertainty depending if it's an upper or lower value
+    if argmax_idx == 0:
+        uncertainty = errors[i][argmax_idx]*-1.
+
+    if argmax_idx == 1:
+        uncertainty = errors[i][argmax_idx]
+
+    # Save the uncertainties and parameters to a list
+    parameters_out.append(parameters[i][1])
+    uncertainties_out.append(uncertainty)
 
 # Add the uncertaintis to the parameters keeping one of them constant
 parameters_and_uncertainties = [np.array(parameters_out)]
@@ -169,3 +181,5 @@ for idx in tqdm(star_parameters.index):
 
     # Generate the MARCS atmospheric model
     model_params, model_out = generate_marcs_model(args.s, star_parameters.iloc[idx], args.mbs, args.ms)
+
+print(star_parameters.iloc[0])
